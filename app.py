@@ -30,8 +30,7 @@ class App:
         self.path: Path | None = None
         self.dirty = False
         root.title("MAUT")
-        root.geometry("1360x860")
-        root.minsize(1100, 700)
+        self._fit_window()
         if sys.platform.startswith("linux"):
             ttk.Style().theme_use("clam")
         self._menu()
@@ -67,6 +66,19 @@ class App:
         if path:
             self._load(Path(path))
         self.refresh_all()
+
+    def _fit_window(self):
+        """Окно 1360×860, а если экран меньше (или в Windows включено масштабирование) — на весь экран."""
+        root = self.root
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.minsize(min(1100, sw - 40), min(700, sh - 80))
+        if sw >= 1400 and sh >= 940:
+            root.geometry("1360x860")
+            return
+        try:
+            root.state("zoomed")              # Windows
+        except tk.TclError:
+            root.attributes("-zoomed", True)  # Linux
 
     def _menu(self):
         m = tk.Menu(self.root)

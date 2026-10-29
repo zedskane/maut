@@ -326,6 +326,17 @@ class Project:
         self._check_pair_record(ans)
         self.pi[self._pi_key(ans.a, ans.b, ans.context)] = ans
 
+    def clear_pi(self, a: str, b: str) -> bool:
+        """Удалить ответы по паре в обоих контекстах."""
+        n = len(self.pi)
+        for ctx in CONTEXTS:
+            self.pi.pop(self._pi_key(a, b, ctx), None)
+        return len(self.pi) < n
+
+    def clear_ui(self, name: str, u: float) -> bool:
+        """Удалить проверочный ответ (лотерея при наихудших прочих)."""
+        return self.ui.get(name, {}).pop(ukey(u), None) is not None
+
     def pi_answer(self, a: str, b: str, ctx: str) -> PairAnswer | None:
         return self.pi.get(self._pi_key(a, b, ctx))
 
@@ -367,6 +378,13 @@ class Project:
             self.ref = name
             self.weight_answers = {}
             self.p_ref = []
+
+    def clear_weight_answer(self, name: str) -> bool:
+        """Удалить ответ ЛПР по паре (опорный, name). True — было что удалять."""
+        found = self.weight_answers.pop(name, None) is not None
+        if found:
+            self.p_ref = []  # kj = p·wj/w_оп — без веса p теряет смысл
+        return found
 
     def set_weight_answer(self, ans: PairAnswer) -> None:
         if self.ref is None:

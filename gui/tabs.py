@@ -430,6 +430,7 @@ class IndependenceTab(ttk.Frame):
                                       ("d", "Разница", 65), ("r", "Итог", 40)], height=9)
         self.ui_tree.frame.pack(fill="both", expand=True)
         self.ui_tree.bind("<<TreeviewSelect>>", lambda _: self._ui_select())
+        ttk.Button(lf, text="Сбросить ответ в выбранной строке", command=self._ui_reset).pack(anchor="w", pady=(4, 0))
         self.ui_summary = ttk.Label(lf, text="", justify="left", wraplength=640)
         self.ui_summary.pack(anchor="w", pady=6)
 
@@ -466,6 +467,7 @@ class IndependenceTab(ttk.Frame):
                         command=self._pi_select_ctx).pack(side="left", padx=4)
         ttk.Radiobutton(cf, text="наихудшие", value="worst", variable=self.ctx,
                         command=self._pi_select_ctx).pack(side="left")
+        ttk.Button(lf, text="Сбросить ответы по выбранной паре", command=self._pi_reset).pack(anchor="w", pady=(0, 4))
         self.pi_summary = ttk.Label(lf, text="", justify="left", wraplength=640)
         self.pi_summary.pack(anchor="w")
 
@@ -517,6 +519,16 @@ class IndependenceTab(ttk.Frame):
             self.ui_panel.clear("Сначала проведите эту лотерею на вкладке «Функции полезности»")
             return
         self.ui_panel.set_spec(lottery_spec(p, name, row, "worst"), lambda recs: self._ui_done(name, u, recs))
+
+    def _ui_reset(self):
+        iid = selected(self.ui_tree)
+        if not iid:
+            return
+        name, u = iid.rsplit("|", 1)
+        if not self.app.project.clear_ui(name, float(u)):
+            show_error(MautError("В этой строке ещё нет проверочного ответа"))
+            return
+        self.app.changed()
 
     def _ui_done(self, name, u, recs):
         for r in recs:
@@ -585,7 +597,20 @@ class IndependenceTab(ttk.Frame):
             return
         a, b = iid.split("|")
         ctx = self.ctx.get()
-        self.pair.set_pair(p, a, b, ctx, lambda ans: self._pi_done(ans))
+        self.pair.set_pair(p, a, b, ctx, lambda ans: self._pi_done(ans),
+                           answered=p.pi_answer(a, b, ctx) is not None)
+
+    def _pi_reset(self):
+        iid = selected(self.pi_tree)
+        if not iid:
+            return
+        a, b = iid.split("|")
+        if not messagebox.askyesno("MAUT", f"Сбросить ответы по паре «{a} — {b}» (оба уровня прочих критериев)?"):
+            return
+        if not self.app.project.clear_pi(a, b):
+            show_error(MautError("По этой паре ещё нет ответов"))
+            return
+        self.app.changed()
 
     def _pi_done(self, ans):
         try:
@@ -631,10 +656,16 @@ class WeightsTab(ttk.Frame):
             "Для каждого критерия Cj ищется точка безразличия на плоскости (опорный, Cj). "
             "Прочие критерии — на наихудших значениях: так равенство верно и для мультипликативной "
             "модели.")).pack(anchor="w")
-        self.tree = make_tree(left, [("c", "Критерий", 160), ("ans", "Что важнее", 130),
-                                     ("k", "Точка K", 110), ("r", "wj / w_оп", 80), ("w", "Вес", 70)], height=6)
+        self.tree = make_tree(left, [("pair", "Пара (опорный — Cj)", 195), ("ans", "Важнее в паре", 120),
+                                     ("k", "Точка K", 160), ("r", "wj / w_оп", 105), ("w", "Вес", 50)], height=6)
         self.tree.frame.pack(fill="x", pady=4)
         self.tree.bind("<<TreeviewSelect>>", lambda _: self._select())
+        bf = ttk.Frame(left)
+        bf.pack(anchor="w")
+        self.reset_btn = ttk.Button(bf, text="Сбросить ответ по выбранной паре", command=self._reset)
+        self.reset_btn.pack(side="left")
+        ttk.Label(bf, text="  Удалить сам критерий можно на вкладке «1. Критерии».",
+                  foreground="#555").pack(side="left")
         self.pair = PairPanel(left)
         self.pair.pack(fill="both", expand=True)
 
@@ -665,21 +696,25 @@ class WeightsTab(ttk.Frame):
         if p.ref:
             for c in p.criteria:
                 if c.name == p.ref:
+                    # опорный критерий ни с чем не сравнивается: его вес — база, wоп / wоп = 1
                     self.tree.insert("", "end", iid=c.name, values=(
-                        c.name, "опорный", "", "1", fmt(w[c.name], 1) if w else ""))
+                        f"{c.name} (опорный)", "—", "—", "1", fmt(w[c.name], 1) if w else ""))
                     continue
+                pair = f"{p.ref} — {c.name}"
                 ans = p.weight_answers.get(c.name)
                 if ans is None:
-                    vals = (c.name, "", "", "", "")
+                    vals = (pair, "не сравнивали", "", "", "")
                     first_todo = first_todo or c.name
                 else:
-                    who = {"a": p.ref, "b": c.name, "equal": "одинаково"}[ans.corner]
-                    k = v(p.criterion(ans.scale), ans.record.value) if ans.record else ""
+                    who = {"a": f"{p.ref} (A)", "b": f"{c.name} (B)", "equal": "одинаково"}[ans.corner]
+                    k = ""
+                    if ans.record:
+                        k = f"{ans.scale} = {v(p.criterion(ans.scale), ans.record.value)}"
                     try:
                         r = fmt(ans.ratio({ans.scale: p.utility(ans.scale)} if ans.scale else {}), 1)
                     except MautError:
-                        r = "нет кривой"
-                    vals = (c.name, who, k, r, fmt(w[c.name], 1) if w else "")
+                        r = f"нужна U({ans.scale})"
+                    vals = (pair, who, k, r, fmt(w[c.name], 1) if w else "")
                 self.tree.insert("", "end", iid=c.name, values=vals)
         select(self.tree, first_todo or keep)
         self._select()
@@ -694,6 +729,12 @@ class WeightsTab(ttk.Frame):
                 info += "\nЕсть критерий важнее опорного — опорным лучше выбрать его (веса от этого не меняются)."
         else:
             info = "Веса пока не посчитаны. " + err
+            need = [a.scale for a in p.weight_answers.values()
+                    if a.corner == "b" and not p.curve_complete(a.scale)]
+            if need:
+                info += (f"\nВ паре «{p.ref} — {need[0]}» важнее оказался «{need[0]}», поэтому вес "
+                         f"считается по его функции полезности: wоп = wj·Uj(K). Постройте U({need[0]}) "
+                         f"на вкладке «2. Функции полезности» или выберите опорным «{need[0]}».")
         self.info.config(text=info)
         self._p_refresh()
 
@@ -736,9 +777,21 @@ class WeightsTab(ttk.Frame):
             self.pair.clear("Сначала выберите опорный критерий")
             return
         if not iid or iid == p.ref:
-            self.pair.clear("Выберите в таблице критерий, кроме опорного")
+            self.pair.clear("Выберите в таблице критерий, кроме опорного: опорный ни с чем не "
+                            "сравнивается, остальные веса считаются относительно него")
             return
-        self.pair.set_pair(p, p.ref, iid, "worst", self._done)
+        self.pair.set_pair(p, p.ref, iid, "worst", self._done, answered=iid in p.weight_answers)
+
+    def _reset(self):
+        p = self.app.project
+        iid = selected(self.tree)
+        if not iid or iid == p.ref or iid not in p.weight_answers:
+            show_error(MautError("Выберите в таблице критерий, по которому уже есть ответ"))
+            return
+        if not messagebox.askyesno("MAUT", f"Сбросить ответ по паре «{p.ref} — {iid}»?"):
+            return
+        p.clear_weight_answer(iid)
+        self.app.changed()
 
     def _done(self, ans):
         try:

@@ -247,3 +247,18 @@ def test_bisection_quantum_shows_round_numbers():
     rec = run_bisection(200, 100, 1.0, oracle, quantum=1.0)
     assert all(abs(x - round(x)) < 1e-9 for x in asked)
     assert abs(rec.value - 160) <= 1.0
+
+
+def test_clear_answers():
+    p = airport()
+    p.set_ce("Стоимость", 0.5, direct(160))
+    p.set_ref("Стоимость")
+    p.set_weight_answer(PairAnswer("Стоимость", "Шум", "worst", "b", direct(10)))
+    p.set_p(direct(0.5))
+    assert p.clear_weight_answer("Шум") and "Шум" not in p.weight_answers and not p.p_ref
+    assert not p.clear_weight_answer("Шум")
+    p.set_pi(PairAnswer("Стоимость", "Время", "best", "a", direct(170)))
+    p.set_pi(PairAnswer("Стоимость", "Время", "worst", "a", direct(168)))
+    assert p.clear_pi("Стоимость", "Время") and p.pi_row("Стоимость", "Время")["ok"] is None
+    p.set_ui("Стоимость", 0.5, direct(162))
+    assert p.clear_ui("Стоимость", 0.5) and p.ui_rows("Стоимость")[0]["ce_worst"] is None

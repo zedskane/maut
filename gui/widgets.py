@@ -304,7 +304,7 @@ class PairPanel(ttk.Frame):
             w.destroy()
         self.corner_frame.pack_forget()
 
-    def set_pair(self, project, a: str, b: str, context: str, on_done) -> None:
+    def set_pair(self, project, a: str, b: str, context: str, on_done, answered: bool = False) -> None:
         self.clear()
         self.p, self.a, self.b, self.context, self.on_done = project, a, b, context, on_done
         ca, cb = project.criterion(a), project.criterion(b)
@@ -315,7 +315,8 @@ class PairPanel(ttk.Frame):
         if others:
             ctx = "Прочие критерии зафиксированы (" + level + "): " + ", ".join(
                 f"{c.name} = {fmt(c.best if context == 'best' else c.worst, c.span)} {c.unit}" for c in others)
-        self.head.config(text=f"Пара «{a}» — «{b}». Шаг 1: какой вариант лучше?")
+        again = " (ответ уже есть, новый заменит его)" if answered else ""
+        self.head.config(text=f"Пара «{a}» — «{b}»{again}. Шаг 1: какой вариант лучше?")
         self.ctx.config(text=ctx)
         self._redraw(None, None)
         A = f"A: {a} = {self._v(ca, ca.best)} (лучшее), {b} = {self._v(cb, cb.worst)} (худшее)"
